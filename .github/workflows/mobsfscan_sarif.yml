@@ -5,6 +5,11 @@ on:
   pull_request:
     branches: [ master, main ]
 
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
 jobs:
   mobsfscan:
     runs-on: ubuntu-latest
