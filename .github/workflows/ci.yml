@@ -1,98 +1,176 @@
-name: CI
+# MegaLinter GitHub Action configuration file
+# More info at https://megalinter.io
+---
+name: MegaLinter
 
+# Trigger mega-linter at every push. Action will also be visible from Pull
+# Requests to main
 on:
+  # Comment this line to trigger action only on pull-requests
+  # (not recommended if you don't pay for GH Actions)
+  push:
+    branches:
+      - main
+      - development
+
   pull_request:
     branches:
       - main
       - development
-  push:
-    branches:
-      - master
-      - main
-      - development
+
+# Comment env block if you do not want to apply fixes
+env:
+  # Apply linter fixes configuration
+  #
+  # When active, APPLY_FIXES must also be defined as environment variable
+  # (in github/workflows/mega-linter.yml or other CI tool)
+  APPLY_FIXES: all
+
+  # Decide which event triggers application of fixes in a commit or a PR
+  # (pull_request, push, all)
+  APPLY_FIXES_EVENT: pull_request, push
+
+  # If APPLY_FIXES is used, defines if the fixes are directly committed (commit)
+  # or posted in a PR (pull_request)
+  APPLY_FIXES_MODE: commit
+
+concurrency:
+  group: ${{ github.ref }}-${{ github.workflow }}
+  cancel-in-progress: true
 
 jobs:
-  testing:
-    name: Run ${{ matrix.category }} testing
+  megalinter:
+    name: MegaLinter
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        category: [static, unit, widget]
-      fail-fast: false
-    steps:
-      - name: Clone the repository
-        uses: actions/checkout@5a4ac9002d0be2fb38bd78e4b4dbde5606d7042f
-        with:
-          path: code
-      - name: Get Flutter version
-        id: get-flutter-version
-        uses: zgosalvez/github-actions-get-flutter-version-env@b5f12dbe2915d60c827758258d6193df1dacca1d
-        with:
-          pubspec-file-path: code/pubspec.yaml
-      - name: Cache Flutter
-        id: flutter-cache
-        uses: actions/cache@c64c572235d810460d0d6876e9c705ad5002b353
-        with:
-          path: flutter
-          key: ${{ env.cache-name }}-ubuntu-latest-${{ steps.get-flutter-version.outputs.version }}-${{ hashFiles('code/pubspec.lock') }}
-          restore-keys: |
-            ${{ env.cache-name }}-ubuntu-latest-${{ steps.get-flutter-version.outputs.version }}-
-            ${{ env.cache-name }}-ubuntu-latest-
-            ${{ env.cache-name }}-
-        env:
-          cache-name: flutter-cache
-      - name: Clone the Flutter repository
-        if: steps.flutter-cache.outputs.cache-hit != 'true'
-        uses: actions/checkout@5a4ac9002d0be2fb38bd78e4b4dbde5606d7042f
-        with:
-          repository: flutter/flutter
-          ref: ${{ steps.get-flutter-version.outputs.version }}
-          path: flutter
-      - name: Add the flutter tool to the path
-        run: |
-          echo "$GITHUB_WORKSPACE/flutter/bin" >> $GITHUB_PATH
-          echo "$GITHUB_WORKSPACE/flutter/bin/cache/dart-sdk/bin" >> $GITHUB_PATH
-      - name: Populate the Flutter tool's cache of binary artifacts
-        if: steps.flutter-cache.outputs.cache-hit != 'true'
-        run: |
-          flutter config --no-analytics
-          flutter precache
-      - name: Get Flutter packages
-        run: flutter pub get
-        working-directory: code
-      - name: Analyze Flutter
-        if: matrix.category == 'static'
-        uses: zgosalvez/github-actions-analyze-dart@bc72307ba08e59e62f4d6e5ae311cc464dc0f296
-        with:
-          fail-on-warnings: true
-          working-directory: code
-      - name: Run Flutter ${{ matrix.category }} tests
-        if: matrix.category != 'static'
-        run: flutter test --no-pub --coverage --coverage-path=./coverage/lcov.${{ matrix.category }}.info test/${{ matrix.category }}s
-        working-directory: code
-      - name: Upload code coverage to GitHub
-        if: matrix.category != 'static'
-        uses: actions/upload-artifact@27121b0bdffd731efa15d66772be8dc71245d074
-        with:
-          name: code-coverage
-          path: code/coverage/lcov.${{ matrix.category }}.info
 
-  coverage_report:
-    name: Generate coverage report
-    needs: testing
-    runs-on: ubuntu-latest
+    # Give the default GITHUB_TOKEN write permission to commit and push, comment
+    # issues & post new PR; remove the ones you do not need
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+
     steps:
-      - name: Clone the repository
-        uses: actions/checkout@5a4ac9002d0be2fb38bd78e4b4dbde5606d7042f
-      - name: Download code coverage from GitHub
-        uses: actions/download-artifact@3be87be14a055c47b01d3bd88f8fe02320a9bb60
+      # Git Checkout
+      - name: Checkout Code
+        uses: actions/checkout@v4
         with:
-          name: code-coverage
-          path: coverage
-      - name: Report code coverage
-        uses: zgosalvez/github-actions-report-lcov@49af65b0586c274a625a41a2dc8aaaae7d00568b
+          token: ${{ secrets.PAT || secrets.GITHUB_TOKEN }}
+
+          # If you use VALIDATE_ALL_CODEBASE = true, you can remove this line to
+          # improve performance
+          fetch-depth: 0
+
+      # MegaLinter
+      - name: MegaLinter
+
+        # You can override MegaLinter flavor used to have faster performances
+        # More info at https://megalinter.io/flavors/
+        uses: oxsecurity/megalinter@v7
+
+        id: ml
+
+        # All available variables are described in documentation
+        # https://megalinter.io/configuration/
+        env:
+          # Validates all source when push on main, else just the git diff with
+          # main. Override with true if you always want to lint all sources
+          #
+          # To validate the entire codebase, set to:
+          # VALIDATE_ALL_CODEBASE: true
+          #
+          # To validate only diff with main, set to:
+          # VALIDATE_ALL_CODEBASE: >-
+          #   ${{
+          #     github.event_name == 'push' &&
+          #     contains(fromJSON('["refs/heads/main", "refs/heads/master"]'), github.ref)
+          #   }}
+          VALIDATE_ALL_CODEBASE: >-
+            ${{
+              github.event_name == 'push' &&
+              contains(fromJSON('["refs/heads/main", "refs/heads/master"]'), github.ref)
+            }}
+
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          # ADD YOUR CUSTOM ENV VARIABLES HERE OR DEFINE THEM IN A FILE
+          # .mega-linter.yml AT THE ROOT OF YOUR REPOSITORY
+
+          # Uncomment to disable copy-paste and spell checks
+          # DISABLE: COPYPASTE,SPELL
+
+      # Upload MegaLinter artifacts
+      - name: Archive production artifacts
+        uses: actions/upload-artifact@v4
+        if: success() || failure()
         with:
-          coverage-files: coverage/lcov.*.info
-          minimum-coverage: 90
-          artifact-name: code-coverage-report
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          name: MegaLinter reports
+          path: |
+            megalinter-reports
+            mega-linter.log
+
+      # Set APPLY_FIXES_IF var for use in future steps
+      - name: Set APPLY_FIXES_IF var
+        run: |
+          printf 'APPLY_FIXES_IF=%s\n' "${{
+            steps.ml.outputs.has_updated_sources == 1 &&
+            (
+              env.APPLY_FIXES_EVENT == 'all' ||
+              env.APPLY_FIXES_EVENT == github.event_name
+            ) &&
+            (
+              github.event_name == 'push' ||
+              github.event.pull_request.head.repo.full_name == github.repository
+            )
+          }}" >> "${GITHUB_ENV}"
+
+      # Set APPLY_FIXES_IF_* vars for use in future steps
+      - name: Set APPLY_FIXES_IF_* vars
+        run: |
+          printf 'APPLY_FIXES_IF_PR=%s\n' "${{
+            env.APPLY_FIXES_IF == 'true' &&
+            env.APPLY_FIXES_MODE == 'pull_request'
+          }}" >> "${GITHUB_ENV}"
+          printf 'APPLY_FIXES_IF_COMMIT=%s\n' "${{
+            env.APPLY_FIXES_IF == 'true' &&
+            env.APPLY_FIXES_MODE == 'commit' &&
+            (!contains(fromJSON('["refs/heads/main", "refs/heads/master"]'), github.ref))
+          }}" >> "${GITHUB_ENV}"
+
+      # Create pull request if applicable
+      # (for now works only on PR from same repository, not from forks)
+      - name: Create Pull Request with applied fixes
+        uses: peter-evans/create-pull-request@v6
+        id: cpr
+        if: env.APPLY_FIXES_IF_PR == 'true'
+        with:
+          token: ${{ secrets.PAT || secrets.GITHUB_TOKEN }}
+          commit-message: "[MegaLinter] Apply linters automatic fixes"
+          title: "[MegaLinter] Apply linters automatic fixes"
+          labels: bot
+
+      - name: Create PR output
+        if: env.APPLY_FIXES_IF_PR == 'true'
+        run: |
+          echo "PR Number - ${{ steps.cpr.outputs.pull-request-number }}"
+          echo "PR URL - ${{ steps.cpr.outputs.pull-request-url }}"
+
+      # Push new commit if applicable
+      # (for now works only on PR from same repository, not from forks)
+      - name: Prepare commit
+        if: env.APPLY_FIXES_IF_COMMIT == 'true'
+        run: sudo chown -Rc $UID .git/
+
+      - name: Commit and push applied linter fixes
+        uses: stefanzweifel/git-auto-commit-action@v4
+        if: env.APPLY_FIXES_IF_COMMIT == 'true'
+        with:
+          branch: >-
+            ${{
+              github.event.pull_request.head.ref ||
+              github.head_ref ||
+              github.ref
+            }}
+          commit_message: "[MegaLinter] Apply linters fixes"
+          commit_user_name: megalinter-bot
+          commit_user_email: nicolas.vuillamy@ox.security
