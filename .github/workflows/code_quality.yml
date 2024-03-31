@@ -10,9 +10,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: "beta" # or: 'beta', 'dev', 'master' (or 'main')
 
       - name: dart-code-metrics
         uses: Flutterando/flutterando-metrics-action@main
