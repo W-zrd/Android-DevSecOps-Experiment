@@ -33,6 +33,8 @@ env:
   # If APPLY_FIXES is used, defines if the fixes are directly committed (commit)
   # or posted in a PR (pull_request)
   APPLY_FIXES_MODE: commit
+  MARKDOWN_SUMMARY_REPORTER: true
+  SARIF_REPORTER: true
 
 concurrency:
   group: ${{ github.ref }}-${{ github.workflow }}
