@@ -1,4 +1,4 @@
-name: Sonar scan
+name: Sonar_scan
 
 on:
   # Trigger analysis when pushing in master or pull requests, and when creating
